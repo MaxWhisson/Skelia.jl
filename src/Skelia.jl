@@ -5,6 +5,7 @@ export Feedback
 export Workpool
 export Pipeline
 export run
+export destroy
 export create_structure
 
 ##############################################################################
@@ -91,8 +92,12 @@ function run(inputs::Channel, outputs::Channel, data::AbstractArray, collector::
     @Threads.spawn collector(length(data), outputs, resultsChannel)
     zip(1:length(data), data) .|> (item -> put!(inputs, item))
     res = take!(resultsChannel)
-    put!(inputs, QUIT())
+    destroy(inputs)
     return res
+end
+
+function destroy(inputs::Channel)
+    put!(inputs, QUIT())
 end
 
 function create_structure(s::Skeleton)
