@@ -2,5 +2,31 @@ using Skelia
 using Test
 
 @testset "Skelia.jl" begin
-    # Write your tests here.
+    @test Skelia.run(
+        Skelia.Seq((x -> x + 1)), 
+        [1,2,3,4,5], 
+        Skelia.orderedCollector) == [2,3,4,5,6]
+
+    @test Skelia.run(
+        Skelia.Feedback(
+            (x -> x==1), 
+            Skelia.Seq(x -> x%2==0 ? x/2 : 3x+1)), 
+        [99,82,15,112],
+        Skelia.orderedCollector) == [1,1,1,1]
+
+    @test Skelia.run(
+        Skelia.Workpool(
+            5, 
+            Skelia.Seq((x -> x + 1))), 
+        [1,2,3,4,5], 
+        Skelia.orderedCollector) == [2,3,4,5,6]
+
+    @test Skelia.run(
+        Skelia.Pipeline(
+            [
+                Skelia.Seq((x -> x + 1)), 
+                Skelia.Seq((x -> 2x))
+            ]), 
+            [1,2,3,4,5], 
+            Skelia.orderedCollector) == [4,6,8,10,12]
 end

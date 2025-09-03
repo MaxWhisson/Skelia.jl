@@ -1,5 +1,12 @@
 module Skelia
 
+export Seq
+export Feedback
+export Workpool
+export Pipeline
+export run
+export create_structure
+
 ##############################################################################
 ####                               Imports                                ####
 ##############################################################################
