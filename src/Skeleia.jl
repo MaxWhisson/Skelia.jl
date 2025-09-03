@@ -1,4 +1,4 @@
-module Skelia
+module Skeleia
 
 export Seq
 export Feedback
