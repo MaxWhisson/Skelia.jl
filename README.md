@@ -103,3 +103,16 @@ Skelia.runSkeleton(
 ```
 
 This is obviously not a good example of *what* to use this for, but it demonstrates the functionality.
+
+## Available methods
+
+### Collectors
+
+A collector, in the context of this package, is a function that will query its second argument Channel for data and give a single output to its third argument channel. The first argument of the collector is the number of items of data in the data input to the PAS. When writing custom collectors, note that the data items are tagged with their initial position in the list, and all tasks will keep this value after a split. In algorithms such as DaC matrix multiplication, you would need to include an additional tag as part of the value to e.g. determine where the sub-matrix multiplication fits into the final result.
+
+
+* `create_structure(s::Any)` where `s` is a PAS structure. Produces a tuple with input and output (to collector) channels for use in `runSkeleton/4`
+* `runSkeleton(s::Any, data::AbstractArray, collector::Function)` where `s` is a PAS structure, `data` is the list of tasks to be passed, and `collector/3` is a collector.
+* `runSkeleton(inputs::Channel, outputs::Channel, data::AbstractArray, collector::Function)` where `inputs` and `outputs` represent the corresponding Channels returned when the PAS was created, and the other arguments are as before.
+* `destroy(inputs::Channel)` tears down a PAS if it was created with `create_structure` manually
+* `orderedCollector/3` is a simple collector for ordering data in the same order it appears in the provided list of tasks (assumes no task splitting)

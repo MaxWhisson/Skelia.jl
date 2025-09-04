@@ -77,7 +77,9 @@ end
 
 function runSkeleton(s::Any, data::AbstractArray, collector::Function)
     (inputChannel, uncolChannel) = create_structure(s)
-    return runSkeleton(inputChannel, uncolChannel, data, collector)
+    res = runSkeleton(inputChannel, uncolChannel, data, collector)
+    destroy(inputChannel)
+    return res
 end
 
 function runSkeleton(inputs::Channel, outputs::Channel, data::AbstractArray, collector::Function)
@@ -85,7 +87,6 @@ function runSkeleton(inputs::Channel, outputs::Channel, data::AbstractArray, col
     @Threads.spawn collector(length(data), outputs, resultsChannel)
     zip(1:length(data), data) .|> (item -> put!(inputs, item))
     res = take!(resultsChannel)
-    destroy(inputs)
     return res
 end
 
