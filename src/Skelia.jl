@@ -1,12 +1,11 @@
-module Skeleia
+module Skelia
 
-export Seq
 export Feedback
 export Workpool
-export Pipeline
-export run
+export runSkeleton
 export destroy
 export create_structure
+export orderedCollector
 
 ##############################################################################
 ####                               Imports                                ####
@@ -22,24 +21,16 @@ abstract type Skeleton end
 
 struct QUIT
 
-end 
-
-struct Seq <: Skeleton
-    f::Function
 end
 
 struct Workpool <: Skeleton
     n_workers::Int
-    inner::Skeleton
-end
-
-struct Pipeline <: Skeleton
-    stages::Vector{Skeleton}
+    inner::Any
 end
 
 struct Feedback <: Skeleton
     predicate::Function # true to progress
-    inner::Skeleton
+    inner::Any
 end
 
 ##############################################################################
@@ -54,7 +45,9 @@ function worker(f::Function, inputs::Channel, dest::Channel)
             put!(dest, QUIT())
             break
         end
-        f(item[2]) .|> (res -> put!(dest, (item[1], res)))
+
+        (pos, val) = item
+        map((res -> put!(dest, (pos, res))), f(val))
     end
 end
 
@@ -82,12 +75,12 @@ function orderedCollector(n::Int, inputs::Channel, output::Channel)
     put!(output, res)
 end
 
-function run(s::Skeleton, data::AbstractArray, collector::Function)
+function runSkeleton(s::Any, data::AbstractArray, collector::Function)
     (inputChannel, uncolChannel) = create_structure(s)
-    return run(inputChannel, uncolChannel, data, collector)
+    return runSkeleton(inputChannel, uncolChannel, data, collector)
 end
 
-function run(inputs::Channel, outputs::Channel, data::AbstractArray, collector::Function)
+function runSkeleton(inputs::Channel, outputs::Channel, data::AbstractArray, collector::Function)
     resultsChannel = Channel(Inf)
     @Threads.spawn collector(length(data), outputs, resultsChannel)
     zip(1:length(data), data) .|> (item -> put!(inputs, item))
@@ -100,29 +93,32 @@ function destroy(inputs::Channel)
     put!(inputs, QUIT())
 end
 
-function create_structure(s::Skeleton)
+function create_structure(s::Any)
     uncolChannel = Channel(Inf)
     inputChannel = buildSkel(s, uncolChannel)
     return (inputChannel, uncolChannel)
 end
 
-function buildSkel(s::Seq, dest::Channel; inChan = false)
+function buildSkel(f::Function, dest::Channel; inChan = false)
     inputChannel = inChan == false ? Channel(Inf) : inChan
-    @Threads.spawn worker(s.f, inputChannel, dest)
+    @Threads.spawn worker(f, inputChannel, dest)
     return inputChannel
 end
 
 function buildSkel(s::Workpool, dest::Channel; inChan = false)
     entryChannel = inChan == false ? Channel(Inf) : inChan
-    buildSkel(s.inner, dest, inChan = entryChannel)
+    for i in 1:s.n_workers
+        buildSkel(s.inner, dest, inChan = entryChannel)
+    end
+    return entryChannel
 end
 
-function buildSkel(s::Pipeline, dest::Channel; inChan = false)
-    if length(s.stages) == 1
-        return buildSkel(s.stages[1], dest)
+function buildSkel(stages::Vector, dest::Channel; inChan = false)
+    if length(stages) == 1
+        return buildSkel(stages[1], dest)
     end
-    inChanNext = buildSkel(Pipeline(s.stages[2:end]), dest)
-    return buildSkel(s.stages[1], inChanNext, inChan = inChan)
+    inChanNext = buildSkel(stages[2:end], dest)
+    return buildSkel(stages[1], inChanNext)
 end
 
 function buildSkel(skeleton::Feedback, dest::Channel; inChan = false)
