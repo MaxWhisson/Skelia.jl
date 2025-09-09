@@ -14,9 +14,13 @@ Something else to note is the lack of a farm PAS. This has been replaced with `W
 
 ## Interface
 
-The general interface, like Skel, is very simple. Additional skeleton types may be added. For simplicity, when comparing to Skel, the explicit `Seq` and `Pipe` PAS have been removed, with `Seq`s being represented just by their function, and `Pipe`s being represented by a vector of PAS. This somewhat improves readability, but makes the typing of the functions a bit messier.
+The general interface, like Skel, is very simple. Additional `skeleton` types may be added.
 
-For specifying a PAS structure, the following structs are provided:
+For specifying a PAS structure, the following (`skeleton`) structs are provided:
+
+* `Seq\1` which represents the most basic sequential unit of work. Represented by a single `f`unction parameter.
+
+* `Pipe\1` which represents a parallel pipeline, with a vector of PAS `stages` as a parameter.
 
 * `Workpool\2` which takes a `n`umber of workers and an `inner` PAS. This structure is replicated `n` times to execute in parallel, with each worker PAS requesting a new task when completed.
 
@@ -36,7 +40,7 @@ end
 
 function singleWorker()
     Skelia.runSkeleton(
-        fib, 
+        Skelia.Seq(fib), 
         [42,42,42,42,42], 
         Skelia.orderedCollector
     )
@@ -44,7 +48,7 @@ end
 
 function multiWorker()
     Skelia.runSkeleton(
-        Skelia.Workpool(5, fib), 
+        Skelia.Workpool(5, Skelia.Seq(fib)), 
         [42,42,42,42,42], 
         Skelia.orderedCollector
     )
@@ -59,7 +63,7 @@ Skelia.runSkeleton(
         (x -> x==1),
         Skelia.Workpool(
             5, 
-            (x -> x%2==0 ? x/2 : 3x+1)
+            Skelia.Seq((x -> x%2==0 ? x/2 : 3x+1))
         )
     ), 
     [99,82,15,112],
@@ -71,10 +75,10 @@ and here's a pipeline of farms that adds one one to each number then doubles the
 
 ```
 Skelia.runSkeleton(
-    [
-        Skelia.Workpool(5, (x -> x + 1)), 
-        Skelia.Workpool(5, (x -> 2x))
-    ], 
+    Skelia.Pipeline([
+        Skelia.Workpool(5, Skelia.Seq((x -> x + 1))), 
+        Skelia.Workpool(5, Skelia.Seq((x -> 2x)))
+    ]), 
     [1,2,3,4,5], 
     Skelia.orderedCollector
 )
@@ -93,10 +97,10 @@ function orderedTwiceCollector(n::Int, inputs::Channel, output::Channel)
 end
 
 Skelia.runSkeleton(
-    [
-        (x -> [(1, x + 1), (2, x + 1)]), 
-        (x -> [(x[1], 2x[2])])
-    ], 
+    Skelia.Pipeline([
+        Skelia.Seq((x -> [(1, x + 1), (2, x + 1)])), 
+        Skelia.Seq((x -> [(x[1], 2x[2])]))
+    ]), 
     [1,2,3,4,5], 
     orderedTwiceCollector
 )
@@ -111,8 +115,8 @@ This is obviously not a good example of *what* to use this for, but it demonstra
 A collector, in the context of this package, is a function that will query its second argument Channel for data and give a single output to its third argument channel. The first argument of the collector is the number of items of data in the data input to the PAS. When writing custom collectors, note that the data items are tagged with their initial position in the list, and all tasks will keep this value after a split. In algorithms such as DaC matrix multiplication, you would need to include an additional tag as part of the value to e.g. determine where the sub-matrix multiplication fits into the final result.
 
 
-* `create_structure(s::Any)` where `s` is a PAS structure. Produces a tuple with input and output (to collector) channels for use in `runSkeleton/4`
-* `runSkeleton(s::Any, data::AbstractArray, collector::Function)` where `s` is a PAS structure, `data` is the list of tasks to be passed, and `collector/3` is a collector.
+* `create_structure(s::Skeleton)` where `s` is a PAS structure. Produces a tuple with input and output (to collector) channels for use in `runSkeleton/4`
+* `runSkeleton(s::Skeleton, data::AbstractArray, collector::Function)` where `s` is a PAS structure, `data` is the list of tasks to be passed, and `collector/3` is a collector.
 * `runSkeleton(inputs::Channel, outputs::Channel, data::AbstractArray, collector::Function)` where `inputs` and `outputs` represent the corresponding Channels returned when the PAS was created, and the other arguments are as before.
 * `destroy(inputs::Channel)` tears down a PAS if it was created with `create_structure` manually
 * `orderedCollector/3` is a simple collector for ordering data in the same order it appears in the provided list of tasks (assumes no task splitting)

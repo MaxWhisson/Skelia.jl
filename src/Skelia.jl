@@ -1,5 +1,7 @@
 module Skelia
 
+export Seq
+export Pipeline
 export Feedback
 export Workpool
 export runSkeleton
@@ -23,14 +25,22 @@ struct QUIT
 
 end
 
+struct Seq <: Skeleton
+    f::Function
+end
+
+struct Pipeline <: Skeleton
+    stages::Vector{Skeleton}
+end
+
 struct Workpool <: Skeleton
     n_workers::Int
-    inner::Any
+    inner::Skeleton
 end
 
 struct Feedback <: Skeleton
     predicate::Function # true to progress
-    inner::Any
+    inner::Skeleton
 end
 
 ##############################################################################
@@ -66,8 +76,8 @@ function create_feedback(pred::Function, inputs::Channel, destOut::Channel, dest
     end
 end
 
-function orderedCollector(n::Int, inputs::Channel, output::Channel)
-    res = Vector{Any}(undef, n)
+function orderedCollector(n::Int, inputs::Channel, output::Channel; resType::Type = Any)
+    res = Vector{resType}(undef, n)
     for i in 1:n
         (pos, val) = take!(inputs)
         res[pos] = val
@@ -75,7 +85,7 @@ function orderedCollector(n::Int, inputs::Channel, output::Channel)
     put!(output, res)
 end
 
-function runSkeleton(s::Any, data::AbstractArray, collector::Function)
+function runSkeleton(s::Skeleton, data::AbstractArray, collector::Function)
     (inputChannel, uncolChannel) = create_structure(s)
     res = runSkeleton(inputChannel, uncolChannel, data, collector)
     destroy(inputChannel)
@@ -94,15 +104,15 @@ function destroy(inputs::Channel)
     put!(inputs, QUIT())
 end
 
-function create_structure(s::Any)
+function create_structure(s::Skeleton)
     uncolChannel = Channel(Inf)
     inputChannel = buildSkel(s, uncolChannel)
     return (inputChannel, uncolChannel)
 end
 
-function buildSkel(f::Function, dest::Channel; inChan = false)
+function buildSkel(s::Seq, dest::Channel; inChan = false)
     inputChannel = inChan == false ? Channel(Inf) : inChan
-    @Threads.spawn worker(f, inputChannel, dest)
+    @Threads.spawn worker(s.f, inputChannel, dest)
     return inputChannel
 end
 
@@ -114,12 +124,12 @@ function buildSkel(s::Workpool, dest::Channel; inChan = false)
     return entryChannel
 end
 
-function buildSkel(stages::Vector, dest::Channel; inChan = false)
-    if length(stages) == 1
-        return buildSkel(stages[1], dest)
+function buildSkel(s::Pipeline, dest::Channel; inChan = false)
+    if length(s.stages) == 1
+        return buildSkel(s.stages[1], dest)
     end
-    inChanNext = buildSkel(stages[2:end], dest)
-    return buildSkel(stages[1], inChanNext)
+    inChanNext = buildSkel(Pipeline(s.stages[2:end]), dest)
+    return buildSkel(s.stages[1], inChanNext, inChan = inChan)
 end
 
 function buildSkel(skeleton::Feedback, dest::Channel; inChan = false)
